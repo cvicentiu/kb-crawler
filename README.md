@@ -8,6 +8,7 @@ pip install -r requirements.txt
 
 To run:
 ```bash
+cd crawler
 scrapy crawl kb -o output.jsonl -t jsonlines
 ```
 
