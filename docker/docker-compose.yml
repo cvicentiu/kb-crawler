@@ -1,0 +1,65 @@
+version: '3'
+services:
+  db:
+    build:
+      context: ../
+      args:
+        mariadb_version: "${MARIADB_VERSION}"
+      dockerfile: docker/mariadb/Dockerfile
+    restart: always
+    environment:
+      - MARIADB_AUTO_UPGRADE='YES'
+      - MARIADB_ROOT_PASSWORD
+      - DJANGO_DB_NAME
+      - DJANGO_DB_USER_NAME
+      - DJANGO_DB_USER_PASSWORD
+    volumes:
+      - ${MARIADB_DATADIR}:/var/lib/mysql:Z
+      - ${MARIADB_CONFDIR}:/etc/mysql/mariadb.conf.d:Z
+      - ${MARIADB_TMPDIR}:/tmp/mariadb:Z
+    command: --tmpdir=/tmp/mariadb
+
+  web:
+    build:
+      context: ../
+      args:
+        python_version: "${PYTHON_VERSION}"
+      dockerfile: docker/app/Dockerfile
+    restart: always
+    environment:
+      - DJANGO_ALLOWED_HOSTS
+      - DJANGO_SECRET_KEY
+      - DJANGO_DEBUG
+      - DJANGO_DB_NAME
+      - DJANGO_DB_USER_NAME
+      - DJANGO_DB_USER_PASSWORD
+      - DJANGO_LOG_LEVEL
+    command: gunicorn chat_server.wsgi --bind 0.0.0.0:8000 -w 6 -t 30
+                      --capture-output
+                      --access-logfile /app/logs/gunicorn-access.log
+                      --reload
+    volumes:
+      # nginx serves the apps static files, share volume
+      - backend_static:/app/static/:Z
+      - ../demo/backend:/app/src/:Z
+    depends_on:
+      - db
+
+  nginx:
+    build:
+      context: ./nginx
+      args:
+        nginx_version: "${NGINX_VERSION}"
+    restart: always
+    volumes:
+      - backend_static:/home/app/web/staticfiles:Z
+      - ../demo/frontend/dist/:/home/app/web/frontend:Z
+      - ../demo/frontend/src/assets/:/home/app/web/assets:Z
+    ports:
+      - 80:80
+    depends_on:
+      - db
+      - web
+
+volumes:
+  backend_static:
