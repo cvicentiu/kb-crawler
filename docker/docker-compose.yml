@@ -34,7 +34,7 @@ services:
       - DJANGO_DB_USER_NAME
       - DJANGO_DB_USER_PASSWORD
       - DJANGO_LOG_LEVEL
-    command: gunicorn chat_server.wsgi --bind 0.0.0.0:8000 -w 6 -t 30
+    command: gunicorn chat_server.wsgi --bind 0.0.0.0:8000 -w 6 -t 300
                       --capture-output
                       --access-logfile /app/logs/gunicorn-access.log
                       --reload

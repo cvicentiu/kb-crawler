@@ -1,12 +1,27 @@
 <template>
   <div class="container mt-5">
     <h2 class="text-center mb-4">MariaDB KB Expert Demo</h2>
-    <!-- Chat Display -->
-    <div class="chat-box border rounded p-3 mb-4" style="height: 400px; overflow-y: scroll;">
-      <div v-for="(message, index) in messages" :key="index" class="my-2">
-        <div :class="message.sender === 'user' ? 'text-end' : 'text-start'">
-          <b>{{ message.sender === 'user' ? 'You' : 'Bot' }}: </b>
-          <p class="d-inline"><span v-html="message.text"></span></p>
+    <div class="d-flex flex-row gap-3">
+      <div class="border rounded mb-4 flex-grow-1 p-3" style="width: 50%">No context bot</div>
+      <div class="border rounded mb-4 flex-grow-1 p-3" style="width: 50%">Context aware bot</div>
+    </div>
+    <div class="d-flex flex-row gap-3">
+      <!-- Chat Display -->
+      <div class="chat-box border rounded p-3 mb-4 flex-grow-1" style="width: 50%; height: 400px; overflow-y: scroll;">
+        <div v-for="(message, index) in messages" :key="index" class="my-2">
+          <div :class="message.sender === 'user' ? 'text-end' : 'text-start'">
+            <b>{{ message.sender === 'user' ? 'You' : 'Bot' }}: </b>
+            <p class="d-inline"><span v-html="message.text"></span></p>
+          </div>
+        </div>
+      </div>
+      <!-- Chat Display -->
+      <div class="chat-box border rounded p-3 mb-4 flex-grow-1" style="width: 50%; height: 400px; overflow-y: scroll;">
+        <div v-for="(message, index) in messagesSmart" :key="index" class="my-2">
+          <div :class="message.sender === 'user' ? 'text-end' : 'text-start'">
+            <b>{{ message.sender === 'user' ? 'You' : 'Bot' }}: </b>
+            <p class="d-inline"><span v-html="message.text"></span></p>
+          </div>
         </div>
       </div>
     </div>
@@ -44,39 +59,18 @@ export default {
     return {
       userInput: '',
       messages: [],
+      messagesSmart: [],
       loading: false,
     };
   },
   methods: {
-    fetchChatGPTResponse(prompt) {
-      // Start receiving streamed events from the Django server
-      this.eventSource = new EventSource(`http://localhost/api/ask-bot/`);
-      let chatGPTMessage = { sender: 'chatgpt', text: '' };
-      this.messages.push(chatGPTMessage);
-
-      this.eventSource.onmessage = (event) => {
-        if (event.data === '[DONE]') {
-          this.loading = false;
-          this.eventSource.close();
-          return;
-        }
-
-        chatGPTMessage.text += event.data;
-      };
-
-      this.eventSource.onerror = (error) => {
-        console.error("Error with EventSource:", error);
-        this.messages.push({ sender: 'chatgpt', text: "Error receiving response. Please try again." });
-        this.loading = false;
-        this.eventSource.close();
-      };
-    },
-
     async handleSubmit() {
       if (!this.userInput.trim()) return;
 
       // Add user message to messages
       this.messages.push({ sender: 'user', text: this.userInput });
+      // Add user message to messages
+      this.messagesSmart.push({ sender: 'user', text: this.userInput });
 
       // Store input and clear input box
       const prompt = this.userInput;
@@ -93,12 +87,18 @@ export default {
           { prompt },
           { responseType: 'stream'},
         );
+        const responseSmart = await fetchAxios.post(
+          'http://localhost/api/ask-bot-smart/',
+          { prompt },
+          { responseType: 'stream'},
+        );
 
-        const reader = response.data.getReader();
+        const readerDumb = response.data.getReader();
+        const readerSmart = responseSmart.data.getReader();
 
-        async function readStream(messages) {
+        async function readStream(prefix, reader, messages) {
           const decoder = new TextDecoder();  // To decode the stream into text
-          let result = '';
+          let result = prefix;
 
           while (true) {
             const { done, value } = await reader.read();
@@ -110,16 +110,11 @@ export default {
               break;
             }
 
-            console.log(chunkText);
-            const lines = chunkText.split('\n');
+            const lines = chunkText;
             for (let line of lines) {
               result += line;
               messages[messages.length - 1].text += line;
             }
-
-
-            // Decode the chunk and add it to the result
-            //result += decoded_value;
           }
 
 
@@ -128,10 +123,14 @@ export default {
 
         // Add ChatGPT response to messages
         this.messages.push({ sender: 'bot', text: '' });
-        await readStream(this.messages);
+        this.messagesSmart.push({ sender: 'bot', text: '' });
+        const [resultOne, resultTwo] = await Promise.all(
+          [readStream('D', readerDumb, this.messages),
+           readStream('S', readerSmart, this.messagesSmart)]);
       } catch (error) {
         console.error('Error fetching reply:', error);
         this.messages.push({ sender: 'bot', text: "Sorry, I couldn't fetch a response. Please try again." });
+        this.messagesSmart.push({ sender: 'bot', text: "Sorry, I couldn't fetch a response. Please try again." });
       } finally {
         this.loading = false;
       }
